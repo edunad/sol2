@@ -100,42 +100,34 @@ namespace sol { namespace stack {
 		}
 	} // namespace stack_detail
 
-	inline int push_environment_of(lua_State* L, int target_index = -1) {
+	inline int push_environment_of(lua_State* L, int index = -1) {
 #if SOL_IS_ON(SOL_SAFE_STACK_CHECK_I_)
-		luaL_checkstack(L, 1, detail::not_enough_stack_space_environment);
+        luaL_checkstack(L, 1, detail::not_enough_stack_space_environment);
 #endif // make sure stack doesn't overflow
-#if SOL_LUA_VERSION_I_ < 502
-		// Use lua_getfenv
-		lua_getfenv(L, target_index);
+#if SOL_LUA_VESION_I_ < 502
+        // Use lua_getfenv
+        lua_getfenv(L, index);
 #else
+        // Use upvalues as explained in Lua 5.2 and beyond's manual
+        int n = 1;
 
-		if (lua_iscfunction(L, target_index) != 0) {
-			const char* maybe_upvalue_name = lua_getupvalue(L, target_index, 1);
-			if (maybe_upvalue_name != nullptr) {
-				// it worked, take this one
-				return 1;
-			}
-		}
-		// Nominally, we search for the `"_ENV"` value.
-		// If we don't find it.... uh, well. We've got a problem?
-		for (int upvalue_index = 1;; ++upvalue_index) {
-			const char* maybe_upvalue_name = lua_getupvalue(L, target_index, upvalue_index);
-			if (maybe_upvalue_name == nullptr) {
-				push(L, lua_nil);
-				break;
-			}
+        for (;; ++n) {
+            const char* name = lua_getupvalue(L, index, n);
 
-			string_view upvalue_name(maybe_upvalue_name);
-			if (upvalue_name == "_ENV") {
-				// Keep this one!
-				break;
-			}
-			// Discard what we received, loop back around
-			lua_pop(L, 1);
-		}
+            if (name == nullptr) {
+                push(L, lua_nil);
+                break;
+            }
+
+            if (strcmp(name, "_ENV") == 0) {
+                break;
+            }
+
+            lua_pop(L, 1);
+        }
 #endif
-		return 1;
-	}
+        return 1;
+    }
 
 	template <typename T>
 	int push_environment_of(const T& target) {
